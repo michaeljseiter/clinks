@@ -1,0 +1,866 @@
+#+TITLE: clinks v0.1 — Go Learning Build Plan
+#+AUTHOR: Learning Path
+#+DATE: 2026-01-08
+
+* Overview
+Building =clinks= v0.1 as a Go learning project.
+
+** What You'll Learn
+- Go project structure and modules
+- Standard library: =encoding/json=, =os=, =path/filepath=, =net/url=
+- Structs, validation, and error handling
+- File I/O and user config directories
+- Unit testing with =testing= package
+- String formatting and text output
+
+** Success Criteria
+- [ ] Can run =clinks= and see formatted output
+- [ ] Understand every line of code you wrote
+- [ ] Have a working test suite
+- [ ] Feel confident reading Go code
+
+* Phase 1: Project Setup & Hello World
+** STEP 1: Initialize Go Module
+*** DONE Tasks
+CLOSED: [2026-01-09 Fri 22:42]
+:LOGBOOK:
+- State "DONE"       from              [2026-01-09 Fri 22:42]
+:END:
+- [X] Create project directory: =mkdir -p ~/projects/clinks=
+- [X] =cd ~/projects/clinks=
+- [X] Initialize module: =go mod init github.com/YOURUSERNAME/clinks=
+- [X] Verify: =go.mod= file exists
+
+*** Learning Resources
+- Go modules: https://go.dev/blog/using-go-modules
+- Understand =module path= naming convention
+
+** STEP 2: Create Hello World
+*** DONE Tasks
+CLOSED: [2026-01-09 Fri 22:41]
+:LOGBOOK:
+- State "DONE"       from "DONE"       [2026-01-09 Fri 22:41]
+- State "DONE"       from              [2026-01-09 Fri 22:41]
+:END:
+- [x] Create =main.go=:
+#+begin_src go
+package main
+
+import "fmt"
+
+func main() {
+    fmt.Println("clinks v0.1")
+}
+#+end_src
+
+- [X] Run: =go run main.go=
+- [X] Build: =go build=
+- [X] Run binary: =./clinks=
+
+*** Go Concepts
+- =package main= — executable programs start here
+- =func main()= — entry point
+- =import= — bring in standard library packages
+- =go run= vs =go build= — both compile, but =go run= compiles to temp location and executes immediately
+
+* Phase 2: Define Data Model
+** STEP 3: Create Internal Package Structure
+*** Tasks
+- [ ] Create directory: =mkdir internal=
+- [ ] Create =internal/profile.go=
+
+*** Go Concepts
+- =internal/= packages are not importable by external projects
+- Package organization in Go
+
+** STEP 4: Define Structs
+*** Tasks
+Create =internal/profile.go=:
+#+begin_src go
+package profile
+
+// Profile represents a clinks profile
+type Profile struct {
+    Name  string `json:"name"`
+    Links []Link `json:"links"`
+}
+
+// Link represents a single link entry
+type Link struct {
+    Label string `json:"label"`
+    URL   string `json:"url"`
+}
+#+end_src
+
+*** Go Concepts to Learn
+- =type= keyword for defining types
+- =struct= types and fields
+- Struct tags (=`json:"name"`=) for JSON marshaling
+- Exported vs unexported names (capitalization)
+- Comments convention (=// Profile represents...=)
+- Package naming: use descriptive names, not generic ones like "internal"
+
+*** Checkpoint
+- [ ] Code compiles: =go build=
+
+** STEP 5: Add Validation Logic
+*** Tasks
+Add to =internal/profile.go=:
+#+begin_src go
+import (
+    "errors"
+    "fmt"
+    "net/url"
+)
+
+// Validate checks if the profile is valid
+func (p *Profile) Validate() error {
+    if p.Name == "" {
+        return errors.New("name is required and must not be empty")
+    }
+
+    if len(p.Links) == 0 {
+        return errors.New("links must be a non-empty array")
+    }
+
+    for i, link := range p.Links {
+        if err := link.Validate(); err != nil {
+            return fmt.Errorf("link[%d]: %w", i, err)
+        }
+    }
+
+    return nil
+}
+
+// Validate checks if a link is valid
+func (l *Link) Validate() error {
+    if l.Label == "" {
+        return errors.New("label is required and must not be empty")
+    }
+
+    if l.URL == "" {
+        return errors.New("url is required and must not be empty")
+    }
+
+    parsedURL, err := url.Parse(l.URL)
+    if err != nil {
+        return fmt.Errorf("invalid url: %w", err)
+    }
+
+    if !parsedURL.IsAbs() {
+        return errors.New("url must be absolute (include scheme like https://)")
+    }
+
+    // Validate scheme (url.Parse is very permissive)
+    scheme := parsedURL.Scheme
+    if scheme != "http" && scheme != "https" && scheme != "mailto" {
+        return fmt.Errorf("url scheme must be http, https, or mailto (got %q)", scheme)
+    }
+
+    // For http/https, ensure host is present
+    if (scheme == "http" || scheme == "https") && parsedURL.Host == "" {
+        return errors.New("http/https url must have a host")
+    }
+
+    return nil
+}
+#+end_src
+
+*** Go Concepts to Learn
+- Methods: =func (p *Profile) Validate()= — method on =*Profile=
+- Pointer receivers (=*Profile=) vs value receivers
+- =range= for iterating over slices
+- =errors.New()= for creating errors
+- =fmt.Errorf()= for formatted errors
+- Error wrapping with =%w= verb
+- =net/url.Parse()= and =IsAbs()=
+- Why =url.Parse()= is permissive and needs additional validation
+- Accessing URL components: =Scheme=, =Host=
+
+*** Checkpoint
+- [ ] Code compiles
+- [ ] Read about methods and receivers
+- [ ] Understand why we use =*Profile= (pointer) receiver
+
+** STEP 6: Write Tests for Validation
+*** Tasks
+Create =internal/profile_test.go=:
+#+begin_src go
+package profile
+
+import "testing"
+
+func TestProfileValidate(t *testing.T) {
+    tests := []struct {
+        name    string
+        profile Profile
+        wantErr bool
+    }{
+        {
+            name: "valid profile",
+            profile: Profile{
+                Name: "Test User",
+                Links: []Link{
+                    {Label: "github", URL: "https://github.com/test"},
+                },
+            },
+            wantErr: false,
+        },
+        {
+            name: "missing name",
+            profile: Profile{
+                Name: "",
+                Links: []Link{
+                    {Label: "github", URL: "https://github.com/test"},
+                },
+            },
+            wantErr: true,
+        },
+        {
+            name: "empty links",
+            profile: Profile{
+                Name:  "Test User",
+                Links: []Link{},
+            },
+            wantErr: true,
+        },
+        {
+            name: "invalid url - no scheme",
+            profile: Profile{
+                Name: "Test User",
+                Links: []Link{
+                    {Label: "blog", URL: "not-a-url"},
+                },
+            },
+            wantErr: true,
+        },
+        {
+            name: "invalid url - unsupported scheme",
+            profile: Profile{
+                Name: "Test User",
+                Links: []Link{
+                    {Label: "file", URL: "file:///etc/passwd"},
+                },
+            },
+            wantErr: true,
+        },
+        {
+            name: "invalid url - http without host",
+            profile: Profile{
+                Name: "Test User",
+                Links: []Link{
+                    {Label: "web", URL: "http://"},
+                },
+            },
+            wantErr: true,
+        },
+        {
+            name: "valid mailto",
+            profile: Profile{
+                Name: "Test User",
+                Links: []Link{
+                    {Label: "email", URL: "mailto:test@example.com"},
+                },
+            },
+            wantErr: false,
+        },
+    }
+
+    for _, tt := range tests {
+        t.Run(tt.name, func(t *testing.T) {
+            err := tt.profile.Validate()
+            if (err != nil) != tt.wantErr {
+                t.Errorf("Validate() error = %v, wantErr %v", err, tt.wantErr)
+            }
+        })
+    }
+}
+#+end_src
+
+*** Go Concepts to Learn
+- Table-driven tests (common Go pattern)
+- =testing= package basics
+- =t.Run()= for subtests
+- Anonymous structs in test tables
+- =t.Errorf()= for test failures
+
+*** Checkpoint
+- [ ] Run tests: =go test ./internal=
+- [ ] All tests pass
+- [ ] Add more test cases for =Link.Validate()=
+
+* Phase 3: File Loading
+** STEP 7: Implement File Discovery
+*** Tasks
+Create =internal/load.go=:
+#+begin_src go
+package profile
+
+import (
+    "encoding/json"
+    "errors"
+    "fmt"
+    "os"
+    "path/filepath"
+)
+
+// FindConfigFile searches for clinks.json in standard locations
+func FindConfigFile() (string, error) {
+    // Try current working directory first
+    if _, err := os.Stat("clinks.json"); err == nil {
+        return "clinks.json", nil
+    }
+
+    // Try config directory
+    configDir, err := os.UserConfigDir()
+    if err != nil {
+        return "", fmt.Errorf("could not determine config directory: %w", err)
+    }
+
+    configPath := filepath.Join(configDir, "clinks", "clinks.json")
+    if _, err := os.Stat(configPath); err == nil {
+        return configPath, nil
+    }
+
+    return "", errors.New("clinks.json not found")
+}
+
+// LoadProfile reads and validates a profile from a file
+func LoadProfile(path string) (*Profile, error) {
+    data, err := os.ReadFile(path)
+    if err != nil {
+        return nil, fmt.Errorf("could not read file: %w", err)
+    }
+
+    var profile Profile
+    if err := json.Unmarshal(data, &profile); err != nil {
+        return nil, fmt.Errorf("invalid JSON: %w", err)
+    }
+
+    if err := profile.Validate(); err != nil {
+        return nil, fmt.Errorf("validation failed: %w", err)
+    }
+
+    return &profile, nil
+}
+#+end_src
+
+*** Go Concepts to Learn
+- =os.Stat()= to check file existence
+- =os.UserConfigDir()= for platform-specific config path
+- =filepath.Join()= for cross-platform path construction
+- =os.ReadFile()= for reading entire file
+- =json.Unmarshal()= for parsing JSON
+- Passing pointer to =Unmarshal= (=&profile=)
+- Returning pointers to structs (=*Profile=)
+
+*** Checkpoint
+- [ ] Code compiles
+- [ ] Create test =clinks.json= in current directory
+- [ ] Test file discovery manually
+
+** STEP 8: Test File Loading
+*** Tasks
+Create =internal/load_test.go=:
+#+begin_src go
+package profile
+
+import (
+    "os"
+    "path/filepath"
+    "testing"
+)
+
+func TestLoadProfile(t *testing.T) {
+    // Create a temporary test file
+    tmpDir := t.TempDir()
+    testFile := filepath.Join(tmpDir, "test.json")
+
+    validJSON := `{
+        "name": "Test User",
+        "links": [
+            {"label": "github", "url": "https://github.com/test"}
+        ]
+    }`
+
+    if err := os.WriteFile(testFile, []byte(validJSON), 0644); err != nil {
+        t.Fatalf("failed to create test file: %v", err)
+    }
+
+    profile, err := LoadProfile(testFile)
+    if err != nil {
+        t.Fatalf("LoadProfile() error = %v", err)
+    }
+
+    if profile.Name != "Test User" {
+        t.Errorf("Name = %q, want %q", profile.Name, "Test User")
+    }
+
+    if len(profile.Links) != 1 {
+        t.Errorf("got %d links, want 1", len(profile.Links))
+    }
+}
+
+func TestLoadProfile_InvalidJSON(t *testing.T) {
+    tmpDir := t.TempDir()
+    testFile := filepath.Join(tmpDir, "bad.json")
+
+    if err := os.WriteFile(testFile, []byte("not json"), 0644); err != nil {
+        t.Fatalf("failed to create test file: %v", err)
+    }
+
+    _, err := LoadProfile(testFile)
+    if err == nil {
+        t.Error("LoadProfile() expected error, got nil")
+    }
+}
+#+end_src
+
+*** Go Concepts to Learn
+- =t.TempDir()= for temporary test directories
+- =os.WriteFile()= for creating test fixtures
+- File permissions (=0644=)
+- Raw string literals with backticks
+
+*** Checkpoint
+- [ ] Run: =go test ./internal -v=
+- [ ] All tests pass
+- [ ] Add test for missing file
+
+* Phase 4: Text Rendering
+** STEP 9: Implement Text Renderer
+*** Tasks
+Create =internal/render.go=:
+#+begin_src go
+package profile
+
+import (
+    "fmt"
+    "strings"
+)
+
+// RenderText renders a profile as plain text
+func RenderText(p *Profile) string {
+    var sb strings.Builder
+
+    // Print name
+    sb.WriteString(p.Name)
+    sb.WriteString("\n")
+
+    // Print divider (matching name length, max 50)
+    // Note: len() counts bytes, not Unicode runes. Good enough for v0.1
+    dividerLen := len(p.Name)
+    if dividerLen > 50 {
+        dividerLen = 50
+    }
+    sb.WriteString(strings.Repeat("─", dividerLen))
+    sb.WriteString("\n")
+
+    // Find max label length for alignment
+    maxLabelLen := 0
+    for _, link := range p.Links {
+        if len(link.Label) > maxLabelLen {
+            maxLabelLen = len(link.Label)
+        }
+    }
+
+    // Print links
+    for _, link := range p.Links {
+        // Left-align label in column
+        sb.WriteString(link.Label)
+        sb.WriteString(strings.Repeat(" ", maxLabelLen-len(link.Label)+2))
+        sb.WriteString(link.URL)
+        sb.WriteString("\n")
+    }
+
+    return sb.String()
+}
+#+end_src
+
+*** Go Concepts to Learn
+- =strings.Builder= for efficient string concatenation
+- =WriteString()= method
+- =strings.Repeat()= for repeating characters
+- Building strings iteratively
+- Unicode characters (=─=)
+
+*** Checkpoint
+- [ ] Code compiles
+- [ ] Understand why =strings.Builder= is better than =+=
+
+** STEP 10: Test Rendering
+*** Tasks
+Create =internal/render_test.go=:
+#+begin_src go
+package profile
+
+import (
+    "strings"
+    "testing"
+)
+
+func TestRenderText(t *testing.T) {
+    profile := Profile{
+        Name: "Jane Doe",
+        Links: []Link{
+            {Label: "github", URL: "https://github.com/jane"},
+            {Label: "blog", URL: "https://example.com"},
+        },
+    }
+
+    output := RenderText(&profile)
+
+    // Check output contains expected elements
+    if !strings.Contains(output, "Jane Doe") {
+        t.Error("output missing name")
+    }
+
+    if !strings.Contains(output, "github") {
+        t.Error("output missing github label")
+    }
+
+    if !strings.Contains(output, "https://github.com/jane") {
+        t.Error("output missing github URL")
+    }
+
+    // Check it starts with name
+    lines := strings.Split(strings.TrimSpace(output), "\n")
+    if len(lines) < 3 {
+        t.Fatalf("expected at least 3 lines, got %d", len(lines))
+    }
+
+    if lines[0] != "Jane Doe" {
+        t.Errorf("first line = %q, want %q", lines[0], "Jane Doe")
+    }
+}
+#+end_src
+
+*** Checkpoint
+- [ ] Run: =go test ./internal -v=
+- [ ] Tests pass
+- [ ] Manually verify output looks good
+
+*** Bonus Challenge
+- [ ] Write a golden test (compare against expected output file)
+
+* Phase 5: Wire It All Together
+** STEP 11: Implement Main Function
+*** Tasks
+Update =main.go=:
+#+begin_src go
+package main
+
+import (
+    "fmt"
+    "os"
+    "path/filepath"
+
+    "github.com/YOURUSERNAME/clinks/internal/profile"
+)
+
+func main() {
+    if err := run(); err != nil {
+        fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+        os.Exit(1)
+    }
+}
+
+func run() error {
+    // Find config file
+    configPath, err := profile.FindConfigFile()
+    if err != nil {
+        return formatNotFoundError()
+    }
+
+    // Load and validate profile
+    prof, err := profile.LoadProfile(configPath)
+    if err != nil {
+        return fmt.Errorf("failed to load profile: %w", err)
+    }
+
+    // Render and print
+    output := profile.RenderText(prof)
+    fmt.Print(output)
+
+    return nil
+}
+
+func formatNotFoundError() error {
+    // Compute actual config path for this OS
+    configDir, err := os.UserConfigDir()
+    configPath := "~/.config/clinks/clinks.json" // fallback
+    if err == nil {
+        configPath = filepath.Join(configDir, "clinks", "clinks.json")
+    }
+
+    return fmt.Errorf(`clinks.json not found
+
+Looked in:
+  ./clinks.json
+  %s
+
+Create a clinks.json file with your profile:
+  {
+    "name": "Your Name",
+    "links": [
+      {"label": "github", "url": "https://github.com/username"}
+    ]
+  }`, configPath)
+}
+#+end_src
+
+*** Go Concepts to Learn
+- Importing your own packages (with nested paths)
+- =os.Exit()= for exit codes
+- =fmt.Fprintf()= to =os.Stderr=
+- Separating =main()= and =run()= for testability
+- Multi-line string literals with =fmt.Errorf= and =%s= placeholder
+- Computing OS-specific paths for better error messages
+
+*** Checkpoint
+- [ ] Run: =go mod tidy= (clean up dependencies)
+- [ ] Build: =go build=
+- [ ] Test with missing file (see error message)
+
+** STEP 12: Create Test Profile & Run
+*** Tasks
+Create =clinks.json= in project directory:
+#+begin_src json
+{
+  "name": "Your Name",
+  "links": [
+    {"label": "github", "url": "https://github.com/yourusername"},
+    {"label": "blog", "url": "https://yourblog.com"},
+    {"label": "email", "url": "mailto:you@example.com"}
+  ]
+}
+#+end_src
+
+Run the tool:
+#+begin_src bash
+./clinks
+#+end_src
+
+*** Checkpoint
+- [ ] Output looks clean and aligned
+- [ ] Name appears at top
+- [ ] Divider line renders correctly
+- [ ] All links appear with proper spacing
+
+** STEP 13: Test Error Cases
+*** Tasks
+Test each error case manually:
+
+1. Missing file:
+   - [ ] Rename =clinks.json= temporarily
+   - [ ] Run =./clinks=
+   - [ ] Verify helpful error message
+
+2. Invalid JSON:
+   - [ ] Add syntax error to =clinks.json=
+   - [ ] Run =./clinks=
+   - [ ] See JSON parse error
+
+3. Missing required field:
+   - [ ] Remove ="name"= field
+   - [ ] Run =./clinks=
+   - [ ] See validation error
+
+4. Invalid URL:
+   - [ ] Change URL to =not-a-url=
+   - [ ] Run =./clinks=
+   - [ ] See URL validation error
+
+* Phase 6: Polish & Documentation
+** STEP 14: Add Version Flag (Optional)
+*** Tasks
+If you want to add =--version= and =--help=:
+
+Update =main.go=:
+#+begin_src go
+import (
+    "flag"
+    // ... other imports
+)
+
+const version = "0.1.0"
+
+func main() {
+    versionFlag := flag.Bool("version", false, "print version")
+    flag.Parse()
+
+    if *versionFlag {
+        fmt.Printf("clinks v%s\n", version)
+        return
+    }
+
+    if err := run(); err != nil {
+        fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+        os.Exit(1)
+    }
+}
+#+end_src
+
+*** Go Concepts to Learn
+- =flag= package for command-line flags
+- Pointer dereferencing (=*versionFlag=)
+
+** STEP 15: Write README
+*** Tasks
+Create =README.md=:
+#+begin_src markdown
+# clinks
+
+A minimal CLI tool for personal link profiles.
+
+## Installation
+
+```bash
+go install github.com/YOURUSERNAME/clinks@latest
+```
+
+## Usage
+
+Create a `clinks.json` file:
+
+```json
+{
+  "name": "Your Name",
+  "links": [
+    {"label": "github", "url": "https://github.com/username"},
+    {"label": "blog", "url": "https://example.com"}
+  ]
+}
+```
+
+Run:
+
+```bash
+clinks
+```
+
+Output:
+
+```
+Your Name
+─────────
+github  https://github.com/username
+blog    https://example.com
+```
+
+## File Locations
+
+clinks looks for `clinks.json` in:
+1. Current working directory
+2. `~/.config/clinks/clinks.json`
+
+## Philosophy
+
+- No accounts, no tracking
+- You own your domain
+- Convention over configuration
+#+end_src
+
+*** Checkpoint
+- [ ] README is clear and concise
+- [ ] Examples work as shown
+
+** STEP 16: Final Testing
+*** Tasks
+- [ ] Run full test suite: =go test ./...=
+- [ ] Build: =go build=
+- [ ] Install locally: =go install=
+- [ ] Run from anywhere: =clinks=
+- [ ] Create profile in =~/.config/clinks/clinks.json=
+- [ ] Verify it works from any directory
+
+* Learning Checkpoints
+** Go Fundamentals
+- [ ] Understand packages and imports
+- [ ] Know difference between =go run= and =go build=
+- [ ] Comfortable with structs and methods
+- [ ] Understand pointers and when to use them
+- [ ] Can write and run tests
+- [ ] Know how to handle errors idiomatically
+
+** Standard Library
+- [ ] =encoding/json= for JSON parsing
+- [ ] =os= for file operations
+- [ ] =path/filepath= for path handling
+- [ ] =net/url= for URL validation
+- [ ] =strings= for string manipulation
+- [ ] =testing= for unit tests
+- [ ] =flag= for CLI flags (optional)
+
+** Project Skills
+- [ ] Can structure a Go project
+- [ ] Understand internal packages
+- [ ] Can write table-driven tests
+- [ ] Know how to use =go mod=
+- [ ] Can build and install binaries
+
+* Next Steps (Post v0.1)
+After completing v0.1 and using it for a while:
+
+** Potential v0.2 Features
+- [ ] =--format md= for Markdown output
+- [ ] =clinks init= to scaffold config
+- [ ] Better error messages
+- [ ] Color output (using a library)
+
+** Learning Opportunities
+- Explore =cobra= for better CLI structure
+- Add =golangci-lint= for code quality
+- Try =goreleaser= for releases
+- Add CI/CD with GitHub Actions
+
+* Resources
+** Official Go Documentation
+- Tour of Go: https://go.dev/tour/
+- Effective Go: https://go.dev/doc/effective_go
+- Standard Library: https://pkg.go.dev/std
+
+** Recommended Reading
+- "Learning Go" by Jon Bodner
+- Go blog: https://go.dev/blog/
+- Go by Example: https://gobyexample.com/
+
+** When You Get Stuck
+- Read the error message carefully
+- Use =go doc= command (e.g., =go doc json.Unmarshal=)
+- Check package documentation on pkg.go.dev
+- Ask specific questions with error messages
+
+* Success Metrics
+You'll know you've succeeded when:
+- [ ] =clinks= works and feels useful
+- [ ] You can explain the code to someone else
+- [ ] You're comfortable reading Go codebases
+- [ ] You can add a new feature without help
+- [ ] Tests pass and give you confidence
+
+* Notes
+- Don't rush — understand each step before moving on
+- Run tests frequently
+- Read error messages carefully
+- It's okay to look things up
+- The goal is learning, not speed
+
+* Key Design Decisions
+** Package Naming
+Use =package profile= instead of =package internal= inside the =internal/= directory. This is more idiomatic and less confusing when importing.
+
+** URL Validation
+Go's =url.Parse()= is very permissive (e.g., ="not-a-url"= can sometimes parse successfully). We add explicit checks for:
+- Allowed schemes: http, https, mailto
+- Host must be present for http/https URLs
+
+This ensures reliable validation and stable tests.
+
+** Cross-Platform Paths
+Error messages compute the actual config path using =os.UserConfigDir()= rather than hardcoding =~/.config=. This shows the correct path on macOS (=~/Library/Application Support=) and Windows (=%AppData%=).
+
+** Divider Length
+The divider uses =len(p.Name)= which counts bytes, not Unicode runes. This is acceptable for v0.1. A proper Unicode-aware implementation would use =utf8.RuneCountInString()=, but that's overkill for now.
+
+Good luck! 🚀
