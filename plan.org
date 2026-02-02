@@ -66,8 +66,8 @@ func main() {
 * Phase 2: Define Data Model
 ** STEP 3: Create Internal Package Structure
 *** Tasks
-- [ ] Create directory: =mkdir internal=
-- [ ] Create =internal/profile.go=
+- [X] Create directory: =mkdir internal=
+- [X] Create =internal/profile.go=
 
 *** Go Concepts
 - =internal/= packages are not importable by external projects
@@ -101,7 +101,7 @@ type Link struct {
 - Package naming: use descriptive names, not generic ones like "internal"
 
 *** Checkpoint
-- [ ] Code compiles: =go build=
+- [X] Code compiles: =go build=
 
 ** STEP 5: Add Validation Logic
 *** Tasks
